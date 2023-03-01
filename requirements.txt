@@ -6,5 +6,4 @@ ai.cdas
 datetime
 matplotlib
 tqdm
-pickle
 scipy
