@@ -207,7 +207,7 @@ def magspect(
                 # f, t, Zxx = stft(G13_Br, fs=1/0.5, nperseg=1800,noverlap=1200)#
                 # f, t, Zxx = stft(y-np.mean(y), fs=1, nperseg=1800,noverlap=1200)# Xueling's values
                 f, t, Zxx = stft(y-np.mean(y), fs=1, nperseg = 256, noverlap = 128)#
-                dt_list = [start+dt.timedelta(seconds=ii) for ii in t]
+                dt_list = [start+dt.timedelta(minutes=ii) for ii in t]
 
                 cmap=axs[idx, 0].pcolormesh(dt_list, f*1000., np.abs(Zxx)*np.abs(Zxx), vmin=0, vmax=0.5)
 
