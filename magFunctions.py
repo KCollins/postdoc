@@ -24,23 +24,17 @@ from scipy import signal
 from scipy.fft import fft
 from scipy.signal import butter, filtfilt, stft, spectrogram
 import datetime as dt
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.signal import welch, hann
 
 # For saving images:
 import os
 
-############################################################################################################################### 
-# # MAGFIG Function to create stacked plot of conjugate magnetometers.
-#
-#
-# INPUTS:
-#
-#    parameter = The parameter of interest - Bx, By, or Bz. North/South, East/West, and vertical, respectively.
-#    start, end = datetimes of the start and end of plots
-#
-# OUTPUTS:
-#
-#    Figure of stacked plots for date in question, with events marked.
+# For fill_nan:
+from scipy import interpolate
 
+############################################################################################################################### 
 
 def magfig(
     parameter = 'Bz',
@@ -52,6 +46,17 @@ def magfig(
     is_saved = False, 
     events=None, event_fontdict = {'size':20,'weight':'bold'}
 ):
+    """
+    MAGFIG 
+        Function to create stacked plot of conjugate magnetometers.
+
+        Arguments:
+            parameter   : The parameter of interest - Bx, By, or Bz. North/South, East/West, and vertical, respectively.
+            start, end  : datetimes of the start and end of plots
+
+        Returns:
+            Figure of stacked plots for date in question, with events marked.
+    """
         # Magnetometer parameter dict so that we don't have to type the full string: 
         d = {'Bx':'MAGNETIC_NORTH_-_H', 'By':'MAGNETIC_EAST_-_E','Bz':'VERTICAL_DOWN_-_Z'}
         if is_saved:
@@ -134,6 +139,15 @@ def magfig(
 ###############################################################################################################################        
 # Function to reject outliers. We'll need this to eliminate power cycling artifacts in the magnetometer plots.
 def reject_outliers(y):   # y is the data in a 1D numpy array
+    """
+        Function to reject outliers from a 1D dataset.
+
+        Arguments:
+            y       : 1D numpy array
+
+        Returns:
+            array with outliers replaced with NaN
+    """
     mean = np.mean(y)
     sd = np.std(y)
     final_list = np.copy(y)
@@ -144,18 +158,19 @@ def reject_outliers(y):   # y is the data in a 1D numpy array
 
 ############################################################################################################################### 
 # # MAGSPECT Function to create power plots for conjugate magnetometers.
-#
-#
-# INPUTS:
-#
-#    parameter = The parameter of interest - Bx, By, or Bz. North/South, East/West, and vertical, respectively.
-#    start, end = datetimes of the start and end of plots
-#
-# OUTPUTS:
-#
-#    Figure of stacked plots for date in question, with events marked.
+
 
 def magspect(
+    """
+       Function to create power plots for conjugate magnetometers.
+
+        Arguments:
+            parameter   : The parameter of interest - Bx, By, or Bz. North/South, East/West, and vertical, respectively.
+            start, end  : datetimes of the start and end of plots
+
+        Returns:
+            Figure of stacked plots for date in question, with events marked.
+    """
     parameter = 'Bx',
     start = datetime.datetime(2016,1,25,0,0), 
     end = datetime.datetime(2016,1,25,9,0), 
@@ -306,15 +321,7 @@ def magspect(
         
 ############################################################################################################################### 
 # # MAGDF Function to create multi-indexable dataframe of all mag parameters for a given period of time. 
-#
-#
-# INPUTS:
-#
-#    start, end = datetimes of the start and end of plots
-#
-# OUTPUTS:
-#
-#    Dataframe of Bx, By, Bz for each magnetometer in list.
+
 
 def magdf(
     start = datetime.datetime(2016, 1, 24, 0, 0, 0), 
@@ -323,6 +330,16 @@ def magdf(
     maglist_b = ['pg0', 'pg1', 'pg2', 'pg3', 'pg4', 'pg5'],  # Antarctic magnetometers
     is_saved = False, 
 ):
+     """
+       Function to create power plots for conjugate magnetometers.
+
+        Arguments:
+            start, end  : datetimes of the start and end of plots
+
+        Returns:
+            Dataframe of Bx, By, Bz for each magnetometer in list.
+    """
+    
         # Magnetometer parameter dict so that we don't have to type the full string: 
         d = {'Bx':'MAGNETIC_NORTH_-_H', 'By':'MAGNETIC_EAST_-_E','Bz':'VERTICAL_DOWN_-_Z'}
         d_i = dict((v, k) for k, v in d.items()) # inverted mapping for col renaming later
@@ -365,3 +382,112 @@ def magdf(
             full_df.to_csv(fname)
         # print(full_df)
         return full_df 
+    
+############################################################################################################################### 
+# #  FILL_NAN: Function to eliminate NaN values from a 1D numpy array.
+
+def fill_nan(y):
+    """
+        Fit a linear regression to the non-nan y values
+
+        Arguments:
+            y       : 1D numpy array with NaNs in it
+
+        Returns:
+            Same thing; no NaNs.
+    """
+    
+    # Fit a linear regression to the non-nan y values
+
+    # Create X matrix for linreg with an intercept and an index
+    X = np.vstack((np.ones(len(y)), np.arange(len(y))))
+
+    # Get the non-NaN values of X and y
+    X_fit = X[:, ~np.isnan(y)]
+    y_fit = y[~np.isnan(y)].reshape(-1, 1)
+
+    # Estimate the coefficients of the linear regression
+    beta = np.linalg.lstsq(X_fit.T, y_fit)[0]
+
+    # Fill in all the nan values using the predicted coefficients
+    y.flat[np.isnan(y)] = np.dot(X[:, np.isnan(y)].T, beta)
+    return y
+
+############################################################################################################################### 
+# #  WAVEPWR: Function to determine Pc5 (by default) wave power for a given magnetometer, parameter and time frame.
+
+def wavepwr(station_id, 
+            parameter,                 # Bx, By or Bz
+            start, 
+            end, 
+            f_lower = 2.5,              # frequency threshold in mHz 
+            f_upper = 3                 # frequency threshold in mHz
+           ):
+    """
+         Function to determine Pc5 (by default) wave power for a given magnetometer, parameter and time frame.
+
+        Arguments: 
+               station_id       : Station ID in lowercase, e.g., 'atu', 'pg4'
+               parameter        : 'Bx', 'By' or 'Bz'
+               start, end       : datetimes of interval
+               f_lower, f_upper : Range of frequencies of interest in mHz.
+
+        Returns:
+               pwr              : Calculated wave power in range of interest. 
+    """
+    magname = station_id.lower()#'stf'
+    d = {'Bx':'MAGNETIC_NORTH_-_H', 'By':'MAGNETIC_EAST_-_E','Bz':'VERTICAL_DOWN_-_Z'}
+    # print(magname)
+    try:
+        print('Checking wave power for magnetometer ' + magname.upper() + ' between ' + str(start) + ' and ' + str(end) + '.')
+        data = cdas.get_data(
+            'sp_phys',
+            'THG_L2_MAG_'+ magname.upper(),
+            start,
+            end,
+            ['thg_mag_'+ magname]
+        )
+        # data['UT'] = pd.to_datetime(data['UT'])#, unit='s')
+        x =data['UT']
+        y =data[d[parameter]]
+
+
+        y = reject_outliers(y) # Remove power cycling artifacts on, e.g., PG2.
+        y = fill_nan(y)
+        y = y - np.nanmean(y)  # Detrend
+        # print(y)
+
+        dt = (x[1] - x[0]).seconds
+        fs = 1 / dt
+
+        datos = y
+
+        # nblock = 1024
+        # overlap = 128
+        nblock = 60
+        overlap = 30
+        win = hann(nblock, True)
+
+        # f, Pxxf = welch(datos, fs, window=win, noverlap=overlap, nfft=nblock, return_onesided=True, detrend=False)
+        f, Pxxf = welch(datos, fs, window=win, return_onesided=True, detrend=False)
+
+#         plt.semilogy(f, Pxxf, '-o')
+#         plt.xlabel('Frequency [Hz]')
+#         plt.ylabel('PSD [V**2/Hz]')
+
+
+#         plt.grid()
+        # plt.show()
+        # pwr = np.trapz(Pxxf[((f>=f_lower/1000) & (f_upper<=3/1000))])
+        # print(f)
+        # print(Pxxf)
+        # pwr = sum(Pxxf[((f>=f_lower/1000) & (f_upper<=3/1000))])
+        pwr = Pxxf[3]
+        print(Pxxf[((f>=f_lower/1000) & (f_upper<=3/1000))])
+        print(magname.upper() + ': The estimated power from ' + str(f_lower) + ' mHz to '+ str(f_upper) + ' mHz is ' + str(pwr) + ' nT/Hz^(1/2)')
+        # print(pwr)
+        return pwr
+    except Exception as e:
+        print(e)
+        # print('Window length: ' + str(len(win)) +'; '+'Signal length: ' + str(len(y))) # usually this is the issue.
+        return 'Error'
