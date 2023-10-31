@@ -51,8 +51,14 @@ def magfig(
         Function to create stacked plot of conjugate magnetometers.
 
         Arguments:
-            parameter   : The parameter of interest - Bx, By, or Bz. North/South, East/West, and vertical, respectively.
-            start, end  : datetimes of the start and end of plots
+            parameter    : The parameter of interest - Bx, By, or Bz. North/South, East/West, and vertical, respectively.
+            start, end     : datetimes of the start and end of plots
+            maglist_a      : List of Arctic magnetometers. Default: ['upn', 'umq', 'gdh', 'atu', 'skt', 'ghb']
+            maglist_b      : Corresponding list of Antarctic magnetometers. Default: ['pg0', 'pg1', 'pg2', 'pg3', 'pg4', 'pg5']
+            is_displayed   : Boolean for whether resulting figure is displayed inline. False by default.
+            is_saved       : Boolean for whether resulting figure is saved to /output directory.
+            events         : List of datetimes for events marked on figure. Empty by default.
+            event_fontdict : Font dict for formatting of event labels. Default: {'size':20,'weight':'bold'}
 
         Returns:
             Figure of stacked plots for date in question, with events marked.
@@ -167,6 +173,13 @@ def magspect(
         Arguments:
             parameter   : The parameter of interest - Bx, By, or Bz. North/South, East/West, and vertical, respectively.
             start, end  : datetimes of the start and end of plots
+            maglist_a      : List of Arctic magnetometers. Default: ['upn', 'umq', 'gdh', 'atu', 'skt', 'ghb']
+            maglist_b      : Corresponding list of Antarctic magnetometers. Default: ['pg0', 'pg1', 'pg2', 'pg3', 'pg4', 'pg5']
+            is_displayed   : Boolean for whether resulting figure is displayed inline. False by default.
+            is_saved       : Boolean for whether resulting figure is saved to /output directory.
+            events         : List of datetimes for events marked on figure. Empty by default.
+            event_fontdict : Font dict for formatting of event labels. Default: {'size':20,'weight':'bold'}
+            myFmt          : Date formatter. By default: mdates.DateFormatter('%H:%M')
 
         Returns:
             Figure of stacked plots for date in question, with events marked.
@@ -334,7 +347,10 @@ def magdf(
        Function to create power plots for conjugate magnetometers.
 
         Arguments:
-            start, end  : datetimes of the start and end of plots
+            start, end     : datetimes of the start and end of plots
+            maglist_a      : List of Arctic magnetometers. Default: ['upn', 'umq', 'gdh', 'atu', 'skt', 'ghb']
+            maglist_b      : Corresponding list of Antarctic magnetometers. Default: ['pg0', 'pg1', 'pg2', 'pg3', 'pg4', 'pg5']
+            is_saved       : Boolean for whether resulting dataframe is saved to /output directory.
 
         Returns:
             Dataframe of Bx, By, Bz for each magnetometer in list.
