@@ -27,6 +27,8 @@ import datetime as dt
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import welch, hann
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 # For saving images:
 import os
@@ -510,3 +512,87 @@ def wavepwr(station_id,
         print(e)
         # print('Window length: ' + str(len(win)) +'; '+'Signal length: ' + str(len(y))) # usually this is the issue.
         return 'Error'
+    
+
+############################################################################################################################### 
+
+def wavefig(
+    stations, # dataframe 
+    parameter = 'Bz',
+    start = datetime.datetime(2016, 1, 24, 0, 0, 0), 
+    end = datetime.datetime(2016, 1, 25, 0, 0, 0), 
+    maglist_a = ['upn', 'umq', 'gdh', 'atu', 'skt', 'ghb'],
+    maglist_b = ['pg0', 'pg1', 'pg2', 'pg3', 'pg4', 'pg5'],
+    is_displayed = True,
+    is_saved = False, 
+    is_verbose = False
+):
+    """
+    WAVEFIG 
+        Function to create wave power plot for a given set of magnetometers. 
+
+        Arguments:
+            stations    : Dataframe of stations with columns IAGA, AACGMLAT, AACGMLON
+            parameter   : The parameter of interest - Bx, By, or Bz. North/South, East/West, and vertical, respectively.
+            start, end   : datetimes of the start and end of plots
+            maglist_a     : List of Arctic magnetometers. Default: ['upn', 'umq', 'gdh', 'atu', 'skt', 'ghb']
+            maglist_b     : Corresponding list of Antarctic magnetometers. Default: ['pg0', 'pg1', 'pg2', 'pg3', 'pg4', 'pg5']
+            is_displayed   : Boolean for whether resulting figure is displayed inline. False by default.
+            is_saved       : Boolean for whether resulting figure is saved to /output directory.
+            is_verbose     : Boolean for whether debugging text is printed.
+
+        Returns:
+            Figure of stacked plots for date in question, with events marked.
+    """
+    
+    foo = stations.copy()
+    foo['WAVEPWR'] = foo.apply(lambda row : wavepwr(row['IAGA'], parameter = parameter, start = start, end = end, is_verbose = is_verbose), axis = 1)#wavepwr(foo['IAGA'])
+    foo['HEMISPHERE'] = np.sign(foo.AACGMLAT)
+    foo.HEMISPHERE = foo['HEMISPHERE'].map({1:'Arctic', -1:'Antarctic', 0:'Error'})
+    foo['ABSLAT'] = abs(foo.AACGMLAT)
+    px.scatter(foo.WAVEPWR, abs(foo.AACGMLAT))
+    foo = foo.sort_values('ABSLAT')
+    
+    # Create figure with secondary y-axis
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    x = foo.query("HEMISPHERE == 'Antarctic'")['ABSLAT'].to_list()
+    y = foo.query("HEMISPHERE == 'Antarctic'")['WAVEPWR'].to_list()
+    labels = foo.query("HEMISPHERE == 'Antarctic'")['IAGA'].to_list()
+
+    # Add traces
+    fig.add_trace(
+        go.Scatter(x= x,y = y, text = labels, name="Antarctic"),
+        secondary_y=False,
+    )
+
+    x = foo.query("HEMISPHERE == 'Arctic'")['ABSLAT'].to_list()
+    y = foo.query("HEMISPHERE == 'Arctic'")['WAVEPWR'].to_list()
+    labels = foo.query("HEMISPHERE == 'Arctic'")['IAGA'].to_list()
+
+    fig.add_trace(
+        go.Scatter(x=x, y=y, text = labels, name="Arctic", 
+                   # line_shape = 'spline'
+                  ),
+        secondary_y=True,
+    )
+
+    # Add figure title
+    fig.update_layout(
+        title_text="Wave Power: " + str(start) + " to " + str(end)
+    )
+
+    # Set x-axis title
+    fig.update_xaxes(title_text="Latitude")
+
+    # Set y-axes titles
+    fig.update_yaxes(title_text="<b>antarctic</b> wave power", secondary_y=False)
+    fig.update_yaxes(title_text="<b>arctic</b> wave power", secondary_y=True)
+    
+    if(is_saved): 
+        if(is_verbose): print("Saving figure.")
+        fname = 'output/WavePower_' +str(start) + '_to_' + str(end) + '_' +  str(parameter) + '.png'
+        print("Saving figure. " + fname)
+        fig.savefig(fname, dpi='figure', pad_inches=0.3)
+    if is_displayed:
+        return fig # TODO: Figure out how to suppress output here
