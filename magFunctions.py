@@ -38,6 +38,48 @@ from scipy import interpolate
 
 ############################################################################################################################### 
 
+
+def magfetch(
+    # parameter = 'Bx',
+    start = datetime.datetime(2016, 1, 24, 0, 0, 0), 
+    end = datetime.datetime(2016, 1, 25, 0, 0, 0), 
+    magname = 'atu', 
+    is_verbose = False, 
+    tgopw = 'ResUseNoCom'
+):
+    """
+    MAGFETCH 
+        Function to fetch data for a given magnetometer. Pulls from ai.cdas or DTU.
+
+        Arguments:
+            start, end   : datetimes of the start and end of sampled data range.
+            magname      : IAGA ID for magnetometer being sampled. e.g.: 'upn'
+            is_verbose   : Boolean for whether debugging text is printed.
+            tgopw        : Password for Tromsø Geophysical Observatory
+
+        Returns:
+            df           : pandas dataframe with columns ['UT', 'MAGNETIC_NORTH_-_H', 'MAGNETIC_EAST_-_E', 'VERTICAL_DOWN_-_Z']
+    """
+    # Pull password for TGO from local .txt file:
+    file = open("tgopw.txt", "r")
+    tgopw = file.read()
+    if(is_verbose): print('Found Tromsø Geophysical Observatory password: ' + tgopw)
+    data = cdas.get_data(
+        'sp_phys',
+        'THG_L2_MAG_'+ magname.upper(),
+        start,
+        end,
+        ['thg_mag_'+ magname]
+    )
+    if(is_verbose): print('Data for ' + magname + ' collected.')
+    # if(is_verbose): print("Converting dates to datetimes.")
+    # data['UT'] = pd.to_datetime(data['UT'])# unit='s')
+    # data['UT'] = [datetime.datetime.fromisoformat(timestamp) for timestamp in data['UT']]
+    # df = pd.DataFrame(data)
+    return data
+
+############################################################################################################################### 
+
 def magfig(
     parameter = 'Bz',
     start = datetime.datetime(2016, 1, 24, 0, 0, 0), 
@@ -78,14 +120,20 @@ def magfig(
     for idx, magname in enumerate(maglist_a):   # Plot Arctic mags:
         print('Plotting data for Arctic magnetometer #' + str(idx+1) + ': ' + magname.upper())
         try:                
-            data = cdas.get_data(
-                'sp_phys',
-                'THG_L2_MAG_'+ magname.upper(),
-                start,
-                end,
-                ['thg_mag_'+ magname]
-            )
-            data['UT'] = pd.to_datetime(data['UT'])#, unit='s')
+            # data = cdas.get_data(
+            #     'sp_phys',
+            #     'THG_L2_MAG_'+ magname.upper(),
+            #     start,
+            #     end,
+            #     ['thg_mag_'+ magname]
+            # )
+            # data['UT'] = pd.to_datetime(data['UT'])#, unit='s')
+            data = magfetch(start, end, magname)
+                # Check the type of the data variable
+            if isinstance(data, dict):
+                # Extract the data for the specified parameter
+                data = data[d[parameter]]
+
             x =data['UT']
             y =data[d[parameter]]
             y = reject_outliers(y) # Remove power cycling artifacts on, e.g., PG2.
@@ -111,17 +159,23 @@ def magfig(
                 magname = maglist_b[idx]
                 ax2 = axs[idx].twinx()
                 print('Plotting data for Antarctic magnetometer #' + str(idx+1) + ': ' + magname.upper())
-                data = cdas.get_data(
-                    'sp_phys',
-                    'THG_L2_MAG_'+ magname.upper(),
-                    start,
-                    end,
-                    ['thg_mag_'+ magname]
-                )
-                data['UT'] = pd.to_datetime(data['UT'])#, unit='s')
+                # data = cdas.get_data(
+                #     'sp_phys',
+                #     'THG_L2_MAG_'+ magname.upper(),
+                #     start,
+                #     end,
+                #     ['thg_mag_'+ magname]
+                # )
+                # data['UT'] = pd.to_datetime(data['UT'])#, unit='s')
+                print('Pulling data.')
+                data = magfetch(start, end, magname)
+                if isinstance(data, dict):
+                    # Extract the data for the specified parameter
+                    data = data[d[parameter]]
+
                 x =data['UT']
                 y =data[d[parameter]]
-
+                y = reject_outliers(y) # Remove power cycling artifacts on, e.g., PG2.
                 color = 'tab:red'
                 # ax2.set_ylabel('Y2-axis', color = color)
                 # ax2.plot(y, dataset_2, color = color)
@@ -167,6 +221,121 @@ def reject_outliers(y):   # y is the data in a 1D numpy array
 ############################################################################################################################### 
 # # MAGSPECT Function to create power plots for conjugate magnetometers.
 
+# def magspect(
+#     parameter='Bx',
+#     start = datetime.datetime(2016, 1, 24, 0, 0, 0), 
+#     end = datetime.datetime(2016, 1, 25, 0, 0, 0), 
+#     maglist_a=['upn', 'umq', 'gdh', 'atu', 'skt', 'ghb'],
+#     maglist_b=['pg0', 'pg1', 'pg2', 'pg3', 'pg4', 'pg5'],
+#     is_displayed=False,
+#     is_saved=True,
+#     is_verbose=False,
+#     events=None,
+#     event_fontdict={'size': 20, 'weight': 'bold'},
+#     myFmt=mdates.DateFormatter('%H:%M')
+# ):
+#     """
+#     Function to create power plots for conjugate magnetometers.
+
+#     Arguments:
+#         parameter: The parameter of interest - Bx, By, or Bz. North/South, East/West, and vertical, respectively.
+#         start, end: datetimes of the start and end of plots
+#         maglist_a: List of Arctic magnetometers. Default: ['upn', 'umq', 'gdh', 'atu', 'skt', 'ghb']
+#         maglist_b: Corresponding list of Antarctic magnetometers. Default: ['pg0', 'pg1', 'pg2', 'pg3', 'pg4', 'pg5']
+#         is_displayed: Boolean for whether resulting figure is displayed inline. False by default.
+#         is_saved: Boolean for whether resulting figure is saved to /output directory.
+#         events: List of datetimes for events marked on figure. Empty by default.
+#         event_fontdict: Font dict for formatting of event labels. Default: {'size': 20, 'weight': 'bold'}
+#         myFmt: Date formatter. By default: mdates.DateFormatter('%H:%M')
+
+#     Returns:
+#         Figure of stacked plots for date in question, with events marked.
+#     """
+
+#     # Magnetometer parameter dict so that we don't have to type the full string:
+#     d = {'Bx': 'MAGNETIC_NORTH_-_H', 'By': 'MAGNETIC_EAST_-_E', 'Bz': 'VERTICAL_DOWN_-_Z'}
+#     if is_saved:
+#         fname = 'output/' + str(start) + '_' + str(parameter) + '.png'
+#         if os.path.exists(fname):
+#             print('Looks like ' + fname + ' has already been generated.')
+#             return
+
+#         # raise Exception('This file has already been generated.')
+#     fig, axs = plt.subplots(len(maglist_a), 2, figsize=(25, 25), constrained_layout=True)
+#     print('Plotting data for ' + str(len(maglist_a)) + ' magnetometers: ' + str(start))
+
+#     for maglist, side in zip([maglist_a, maglist_b], ['Arctic', 'Antarctic']):
+#         for idx, magname in enumerate(maglist):
+#             print('Plotting data for ' + side + ' magnetometer #' + str(idx+1) + ': ' + magname.upper())
+
+#             try:
+#                 data = magfetch(start, end, magname, is_verbose=is_verbose)
+#                 # print(type(data['UT']))
+
+#                 # data['UT'] = pd.to_datetime(data['UT'])  # Converting UT column to datetime object
+
+#                 x = data['UT']
+#                 y = data[d[parameter]]
+#                 y = reject_outliers(y)
+#                 # Interpolate NaNs away:
+#                 df = pd.DataFrame(y, x)
+#                 df = df.interpolate('linear')
+#                 y = df[0].values
+
+#                 xlim = [start, end]
+
+#                 # axs[idx, side == 'Arctic'].xaxis.set_major_formatter(myFmt)
+#                 # axs[idx, side == 'Arctic'].gca().xaxis.set_major_formatter(myFmt)
+#                 # axs[:, side == 'Arctic'].gca().xaxis.set_major_formatter(myFmt)
+#                 # axs[idx, side == 'Arctic'].set_major_formatter(myFmt)
+#                 # axs[idx, side == 'Arctic'].gca().set_major_formatter(myFmt)
+
+#                 f, t, Zxx = stft(y - np.mean(y), fs=1, nperseg=256, noverlap=128)
+#                 dt_list = [start + dt.timedelta(seconds=ii) for ii in t]
+
+#                 # cmap = axs[idx, side == 'Arctic'].pcolormesh(dt_list, f * 1000., np.abs(Zxx) * np)
+#                 cmap=axs[idx, 0].pcolormesh(dt_list, f*1000., np.abs(Zxx)*np.abs(Zxx), vmin=0, vmax=0.5)
+                
+
+#                 axs[idx, 0].set(xlim=xlim)
+#                 axs[idx, 0].set(ylim=[0,20])
+#                 axs[idx, 0].xaxis.set_major_formatter(myFmt)
+#                 axs[idx, 0].set_title('STFT Power Spectrum: ' + magname.upper())
+#                 axs[idx, 0].set_ylabel('Frequency [mHz]')
+#                 axs[idx, 0].set_xlabel('UT')
+                
+#                 axs[idx, 1].set(xlim=xlim)
+#                 axs[idx, 1].set(ylim=[0,20])
+#                 axs[idx, 1].xaxis.set_major_formatter(myFmt)
+#                 axs[idx, 1].set_title('STFT Power Spectrum: ' + magname.upper())
+#                 axs[idx, 1].set_ylabel('Frequency [mHz]')
+#                 axs[idx, 1].set_xlabel('UT')
+                
+#                 if events is not None:
+#                     # print('Plotting events...')
+#                     trans      = mpl.transforms.blended_transform_factory(axs[idx,0].transData,axs[idx,0].transAxes)
+#                     for event in events:
+#                         evt_dtime   = event.get('datetime')
+#                         evt_label   = event.get('label')
+#                         evt_color   = event.get('color','0.4')
+
+#                         axs[idx, 0].axvline(evt_dtime,lw=1,ls='--',color=evt_color)
+#                         if evt_label is not None:
+#                             axs[idx, 0].text(evt_dtime,0.01,evt_label,transform=trans,
+#                                     rotation=90,fontdict=event_fontdict,color=evt_color,
+#                                     va='bottom',ha='right')
+
+#             except Exception as e:
+#                 print(e)
+#                 continue
+#         fig.suptitle(str(start) + ' ' +  str(parameter), fontsize=30)   # Title the plot...
+#         if is_saved:
+#             fname = 'output/PowerSpectrum_' +str(start) + '_' +  str(parameter) + '.png'
+#             print("Saving figure. " + fname)
+#             fig.savefig(fname, dpi='figure', pad_inches=0.3)
+#         if is_displayed:
+#             return fig 
+
 
 def magspect(
     parameter = 'Bx',
@@ -176,6 +345,7 @@ def magspect(
     maglist_b = ['pg0', 'pg1', 'pg2', 'pg3', 'pg4', 'pg5'],
     is_displayed = False,
     is_saved = True, 
+    is_verbose = False,
     events=None, event_fontdict = {'size':20,'weight':'bold'}, 
     myFmt = mdates.DateFormatter('%H:%M')
 ):
@@ -217,6 +387,7 @@ def magspect(
                 ['thg_mag_'+ magname]
             )
             data['UT'] = pd.to_datetime(data['UT'])#, unit='s')
+            # data = magfetch(start, end, magname)
             x =data['UT']
             y =data[d[parameter]]
             y = reject_outliers(y)
@@ -269,14 +440,16 @@ def magspect(
     for idx, magname in enumerate(maglist_b):   # Plot Antarctic mags:
         print('Plotting data for Antarctic magnetometer #' + str(idx+1) + ': ' + magname.upper())
         try:                
-            data = cdas.get_data(
-                'sp_phys',
-                'THG_L2_MAG_'+ magname.upper(),
-                start,
-                end,
-                ['thg_mag_'+ magname]
-            )
-            data['UT'] = pd.to_datetime(data['UT'])#, unit='s')
+            # data = cdas.get_data(
+            #     'sp_phys',
+            #     'THG_L2_MAG_'+ magname.upper(),
+            #     start,
+            #     end,
+            #     ['thg_mag_'+ magname]
+            # )
+            # data['UT'] = pd.to_datetime(data['UT'])#, unit='s')
+            print('Pulling data...')
+            data = magfetch(start, end, magname, is_verbose = is_verbose)
             x =data['UT']
             y =data[d[parameter]]
             y = reject_outliers(y)
@@ -375,15 +548,16 @@ def magdf(
         for idx, magname in enumerate(mags):   # For each magnetometer, pull data and merge into full_df:
             if(is_verbose): print('Pulling data for magnetometer: ' + magname.upper())
             try:                
-                data = cdas.get_data(
-                    'sp_phys',
-                    'THG_L2_MAG_'+ magname.upper(),
-                    start,
-                    end,
-                    ['thg_mag_'+ magname]
-                )
-                data['UT'] = pd.to_datetime(data['UT'])# unit='s')
-                df = pd.DataFrame(data)
+                # data = cdas.get_data(
+                #     'sp_phys',
+                #     'THG_L2_MAG_'+ magname.upper(),
+                #     start,
+                #     end,
+                #     ['thg_mag_'+ magname]
+                # )
+                # data['UT'] = pd.to_datetime(data['UT'])# unit='s')
+                # df = pd.DataFrame(data)
+                df = magfetch(start, end, magname)
                 df.rename(columns=d_i, inplace=True)    # mnemonic column names
 
                 df['Magnetometer'] = magname.upper()
@@ -468,6 +642,7 @@ def wavepwr(station_id,
             end,
             ['thg_mag_'+ magname]
         )
+        # data = magfetch(start, end, magname)
         # data['UT'] = pd.to_datetime(data['UT'])#, unit='s')
         x =data['UT']
         y =data[d[parameter]]
@@ -518,7 +693,7 @@ def wavepwr(station_id,
 
 def wavefig(
     stations, # dataframe 
-    parameter = 'Bz',
+    parameter = 'Bx',
     start = datetime.datetime(2016, 1, 24, 0, 0, 0), 
     end = datetime.datetime(2016, 1, 25, 0, 0, 0), 
     maglist_a = ['upn', 'umq', 'gdh', 'atu', 'skt', 'ghb'],
@@ -579,7 +754,7 @@ def wavefig(
 
     # Add figure title
     fig.update_layout(
-        title_text="Wave Power: " + str(start) + " to " + str(end)
+        title_text=str(parameter) + " Wave Power: " + str(start) + " to " + str(end)
     )
 
     # Set x-axis title
@@ -593,6 +768,8 @@ def wavefig(
         if(is_verbose): print("Saving figure.")
         fname = 'output/WavePower_' +str(start) + '_to_' + str(end) + '_' +  str(parameter) + '.png'
         print("Saving figure. " + fname)
-        fig.savefig(fname, dpi='figure', pad_inches=0.3)
+        # fig.savefig(fname, dpi='figure', pad_inches=0.3)
+        fig.write_image(fname)
     if is_displayed:
+        # fig.show()
         return fig # TODO: Figure out how to suppress output here
