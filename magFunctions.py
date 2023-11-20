@@ -281,6 +281,96 @@ def reject_outliers(y):   # y is the data in a 1D numpy array
 ############################################################################################################################### 
 # # MAGSPECT Function to create power plots for conjugate magnetometers.
 
+def magspect(
+    parameter='Bx',
+    start=datetime.datetime(2016, 1, 24, 0, 0, 0),
+    end=datetime.datetime(2016, 1, 25, 0, 0, 0),
+    maglist_a=['upn', 'umq', 'gdh', 'atu', 'skt', 'ghb'],
+    maglist_b=['pg0', 'pg1', 'pg2', 'pg3', 'pg4', 'pg5'],
+    is_displayed=False,
+    is_saved=True,
+    is_verbose=False,
+    events=None,
+    event_fontdict={'size': 20, 'weight': 'bold'},
+    myFmt=mdates.DateFormatter('%H:%M')
+):
+    """
+    Function to create power plots for conjugate magnetometers.
+
+    Arguments:
+        parameter: The parameter of interest - Bx, By, or Bz. North/South, East/West, and vertical, respectively.
+        start, end: datetimes of the start and end of plots
+        maglist_a: List of Arctic magnetometers. Default: ['upn', 'umq', 'gdh', 'atu', 'skt', 'ghb']
+        maglist_b: Corresponding list of Antarctic magnetometers. Default: ['pg0', 'pg1', 'pg2', 'pg3', 'pg4', 'pg5']
+        is_displayed: Boolean for whether resulting figure is displayed inline. False by default.
+        is_saved: Boolean for whether resulting figure is saved to /output directory.
+        events: List of datetimes for events marked on figure. Empty by default.
+        event_fontdict: Font dict for formatting of event labels. Default: {'size': 20, 'weight': 'bold'}
+        myFmt: Date formatter. By default: mdates.DateFormatter('%H:%M')
+
+    Returns:
+        Figure of stacked plots for date in question, with events marked.
+    """
+    d = {'Bx': 'MAGNETIC_NORTH_-_H', 'By': 'MAGNETIC_EAST_-_E', 'Bz': 'VERTICAL_DOWN_-_Z'}
+    if is_saved:
+        fname = 'output/' + str(start) + '_' + str(parameter) + '.png'
+        if os.path.exists(fname):
+            print('Looks like ' + fname + ' has already been generated.')
+            return
+
+    fig, axs = plt.subplots(len(maglist_a), 2, figsize=(25, 25), constrained_layout=True)
+    print('Plotting data for ' + str(len(maglist_a)) + ' magnetometers: ' + str(start))
+
+    for maglist, side, sideidx in zip([maglist_a, maglist_b], ['Arctic', 'Antarctic'], [0, 1]):
+        for idx, magname in enumerate(maglist):
+            print('Plotting data for ' + side + ' magnetometer #' + str(idx + 1) + ': ' + magname.upper())
+
+            try:
+                data = magfetch(start, end, magname, is_verbose=is_verbose)
+                x = data['UT']
+                y = data[d[parameter]]
+                y = reject_outliers(y)
+                df = pd.DataFrame(y, x)
+                df = df.interpolate('linear')
+                y = df[0].values
+
+                xlim = [start, end]
+
+                f, t, Zxx = stft(y - np.mean(y), fs=1, nperseg=1800, noverlap=1200)
+                dt_list = [start + datetime.timedelta(seconds=ii) for ii in t]
+
+                axs[idx, sideidx].grid(False)
+                cmap = axs[idx, sideidx].pcolormesh(dt_list, f * 1000., np.abs(Zxx) * np.abs(Zxx), vmin=0, vmax=0.5)
+                axs[idx, sideidx].set_ylim([1, 20])  # Set y-axis limits
+
+                axs[idx, sideidx].set_title('STFT Power Spectrum: ' + magname.upper())
+
+                if events is not None:
+                    trans = mpl.transforms.blended_transform_factory(axs[idx, sideidx].transData,
+                                                                     axs[idx, sideidx].transAxes)
+                    for event in events:
+                        evt_dtime = event.get('datetime')
+                        evt_label = event.get('label')
+                        evt_color = event.get('color', '0.4')
+
+                        axs[idx, sideidx].axvline(evt_dtime, lw=1, ls='--', color=evt_color)
+                        if evt_label is not None:
+                            axs[idx, sideidx].text(evt_dtime, 0.01, evt_label, transform=trans,
+                                                   rotation=90, fontdict=event_fontdict, color=evt_color,
+                                                   va='bottom', ha='right')
+
+            except Exception as e:
+                print(e)
+                continue
+
+    fig.suptitle(str(start) + ' ' + str(parameter), fontsize=30)  # Title the plot...
+    if is_saved:
+        fname = 'output/PowerSpectrum_' + str(start) + '_' + str(parameter) + '.png'
+        print("Saving figure. " + fname)
+        fig.savefig(fname, dpi='figure', pad_inches=0.3)
+    if is_displayed:
+        return fig
+
 # def magspect(
 #     parameter='Bx',
 #     start = datetime.datetime(2016, 1, 24, 0, 0, 0), 
@@ -333,7 +423,7 @@ def reject_outliers(y):   # y is the data in a 1D numpy array
 #                 # print(type(data['UT']))
 
 #                 # data['UT'] = pd.to_datetime(data['UT'])  # Converting UT column to datetime object
-
+                
 #                 x = data['UT']
 #                 y = data[d[parameter]]
 #                 y = reject_outliers(y)
@@ -397,174 +487,176 @@ def reject_outliers(y):   # y is the data in a 1D numpy array
 #             return fig 
 
 
-def magspect(
-    parameter = 'Bx',
-    start = datetime.datetime(2016,1,25,0,0), 
-    end = datetime.datetime(2016,1,25,9,0), 
-    maglist_a = ['upn', 'umq', 'gdh', 'atu', 'skt', 'ghb'],
-    maglist_b = ['pg0', 'pg1', 'pg2', 'pg3', 'pg4', 'pg5'],
-    is_displayed = False,
-    is_saved = True, 
-    is_verbose = False,
-    events=None, event_fontdict = {'size':20,'weight':'bold'}, 
-    myFmt = mdates.DateFormatter('%H:%M')
-):
-    """
-       Function to create power plots for conjugate magnetometers.
+# def magspect(
+#     parameter = 'Bx',
+#     start = datetime.datetime(2016,1,25,0,0), 
+#     end = datetime.datetime(2016,1,25,9,0), 
+#     maglist_a = ['upn', 'umq', 'gdh', 'atu', 'skt', 'ghb'],
+#     maglist_b = ['pg0', 'pg1', 'pg2', 'pg3', 'pg4', 'pg5'],
+#     is_displayed = False,
+#     is_saved = True, 
+#     is_verbose = False,
+#     events=None, event_fontdict = {'size':20,'weight':'bold'}, 
+#     myFmt = mdates.DateFormatter('%H:%M')
+# ):
+#     """
+#        Function to create power plots for conjugate magnetometers.
 
-        Arguments:
-            parameter   : The parameter of interest - Bx, By, or Bz. North/South, East/West, and vertical, respectively.
-            start, end  : datetimes of the start and end of plots
-            maglist_a     : List of Arctic magnetometers. Default: ['upn', 'umq', 'gdh', 'atu', 'skt', 'ghb']
-            maglist_b     : Corresponding list of Antarctic magnetometers. Default: ['pg0', 'pg1', 'pg2', 'pg3', 'pg4', 'pg5']
-            is_displayed   : Boolean for whether resulting figure is displayed inline. False by default.
-            is_saved       : Boolean for whether resulting figure is saved to /output directory.
-            events     : List of datetimes for events marked on figure. Empty by default.
-            event_fontdict : Font dict for formatting of event labels. Default: {'size':20,'weight':'bold'}
-            myFmt        : Date formatter. By default: mdates.DateFormatter('%H:%M')
+#         Arguments:
+#             parameter   : The parameter of interest - Bx, By, or Bz. North/South, East/West, and vertical, respectively.
+#             start, end  : datetimes of the start and end of plots
+#             maglist_a     : List of Arctic magnetometers. Default: ['upn', 'umq', 'gdh', 'atu', 'skt', 'ghb']
+#             maglist_b     : Corresponding list of Antarctic magnetometers. Default: ['pg0', 'pg1', 'pg2', 'pg3', 'pg4', 'pg5']
+#             is_displayed   : Boolean for whether resulting figure is displayed inline. False by default.
+#             is_saved       : Boolean for whether resulting figure is saved to /output directory.
+#             events     : List of datetimes for events marked on figure. Empty by default.
+#             event_fontdict : Font dict for formatting of event labels. Default: {'size':20,'weight':'bold'}
+#             myFmt        : Date formatter. By default: mdates.DateFormatter('%H:%M')
 
-        Returns:
-            Figure of stacked plots for date in question, with events marked.
-    """
-    # Magnetometer parameter dict so that we don't have to type the full string: 
-    d = {'Bx':'MAGNETIC_NORTH_-_H', 'By':'MAGNETIC_EAST_-_E','Bz':'VERTICAL_DOWN_-_Z'}
-    if is_saved:
-        fname = 'output/' +str(start) + '_' +  str(parameter) + '.png'
-        if os.path.exists(fname):
-            print('Looks like ' + fname + ' has already been generated.')
-            return 
-            # raise Exception('This file has already been generated.')
-    fig, axs = plt.subplots(len(maglist_a), 2, figsize=(25, 25), constrained_layout=True)
-    print('Plotting data for ' + str(len(maglist_a)) + ' magnetometers: ' + str(start))
-    for idx, magname in enumerate(maglist_a):   # Plot Arctic mags:
-        print('Plotting data for Arctic magnetometer #' + str(idx+1) + ': ' + magname.upper())
-        try:                
-            # data = cdas.get_data(
-            #     'sp_phys',
-            #     'THG_L2_MAG_'+ magname.upper(),
-            #     start,
-            #     end,
-            #     ['thg_mag_'+ magname]
-            # )
-            # data['UT'] = pd.to_datetime(data['UT'])#, unit='s')
-            data = magfetch(start, end, magname, is_verbose = is_verbose)
-            x =data['UT']
-            y =data[d[parameter]]
-            y = reject_outliers(y)
-            # Interpolate NaNs away: 
-            df = pd.DataFrame(y, x)
-            df = df.interpolate('linear')
-            y = df[0].values
-            # fig, (ax1,ax2) = plt.subplots(2,1,figsize=(10,10))
-            xlim=[start,end]
-            # ax1.plot(G13_dt,G13_Br)
-            # ax1.plot(x, y-np.mean(y))
-            # ax1.set_ylabel('[nT]') # CHECK: is this the correct unit?
-            # ax1.set_xlabel('UT')
-            # ax1.set(xlim=xlim)
-            # myFmt = mdates.DateFormatter('%H:%M')
-            axs[idx, 0].xaxis.set_major_formatter(myFmt)
+#         Returns:
+#             Figure of stacked plots for date in question, with events marked.
+#     """
+#     # Magnetometer parameter dict so that we don't have to type the full string: 
+#     d = {'Bx':'MAGNETIC_NORTH_-_H', 'By':'MAGNETIC_EAST_-_E','Bz':'VERTICAL_DOWN_-_Z'}
+#     if is_saved:
+#         fname = 'output/' +str(start) + '_' +  str(parameter) + '.png'
+#         if os.path.exists(fname):
+#             print('Looks like ' + fname + ' has already been generated.')
+#             return 
+#             # raise Exception('This file has already been generated.')
+#     fig, axs = plt.subplots(len(maglist_a), 2, figsize=(25, 25), constrained_layout=True)
+#     print('Plotting data for ' + str(len(maglist_a)) + ' magnetometers: ' + str(start))
+#     for idx, magname in enumerate(maglist_a):   # Plot Arctic mags:
+#         print('Plotting data for Arctic magnetometer #' + str(idx+1) + ': ' + magname.upper())
+#         try:                
+#             # data = cdas.get_data(
+#             #     'sp_phys',
+#             #     'THG_L2_MAG_'+ magname.upper(),
+#             #     start,
+#             #     end,
+#             #     ['thg_mag_'+ magname]
+#             # )
+#             # data['UT'] = pd.to_datetime(data['UT'])#, unit='s')
+#             data = magfetch(start, end, magname, is_verbose = is_verbose)
+#             x =data['UT']
+#             y =data[d[parameter]]
+#             y = reject_outliers(y)
+#             # Interpolate NaNs away: 
+#             df = pd.DataFrame(y, x)
+#             df = df.interpolate('linear')
+#             y = df[0].values
+#             # fig, (ax1,ax2) = plt.subplots(2,1,figsize=(10,10))
+#             xlim=[start,end]
+#             # ax1.plot(G13_dt,G13_Br)
+#             # ax1.plot(x, y-np.mean(y))
+#             # ax1.set_ylabel('[nT]') # CHECK: is this the correct unit?
+#             # ax1.set_xlabel('UT')
+#             # ax1.set(xlim=xlim)
+#             # myFmt = mdates.DateFormatter('%H:%M')
+#             axs[idx, 0].xaxis.set_major_formatter(myFmt)
 
-            # f, t, Zxx = stft(G13_Br, fs=1/0.5, nperseg=1800,noverlap=1200)#
-            # f, t, Zxx = stft(y-np.mean(y), fs=1, nperseg=1800,noverlap=1200)# Xueling's values
-            f, t, Zxx = stft(y-np.mean(y), fs=1, nperseg = 256, noverlap = 128)#
-            dt_list = [start+dt.timedelta(minutes=ii) for ii in t]
+#             # f, t, Zxx = stft(G13_Br, fs=1/0.5, nperseg=1800,noverlap=1200)#
+#             # f, t, Zxx = stft(y-np.mean(y), fs=1, nperseg=1800,noverlap=1200)# Xueling's values
+#             # f, t, Zxx = stft(y-np.mean(y), fs=1, nperseg = 256, noverlap = 128)#
+#             f, t, Zxx = stft(y-np.mean(y), fs=1, nperseg=1800,noverlap=1200)#
+#             dt_list = [start+dt.timedelta(minutes=ii) for ii in t]
 
-            cmap=axs[idx, 0].pcolormesh(dt_list, f*1000., np.abs(Zxx)*np.abs(Zxx), vmin=0, vmax=0.5)
+#             # cmap=axs[idx, 0].pcolormesh(dt_list, f*1000., np.abs(Zxx)*np.abs(Zxx), vmin=0, vmax=0.5)
+#             cmap=axs[idx, 0].pcolormesh(dt_list, f*1000., np.abs(Zxx)*np.abs(Zxx), vmin=0, vmax=0.5)
 
-            # ax2.axis([0, len(G13_Br)/2., 0, 40])
-            #ax2.axis([0, len(y)/2., 0, 20])
-            #plt.colorbar(cmap,label='spectrum [nT^2]')
-            axs[idx, 0].set(xlim=xlim)
-            axs[idx, 0].set(ylim=[0,20])
-            axs[idx, 0].xaxis.set_major_formatter(myFmt)
-            axs[idx, 0].set_title('STFT Power Spectrum: ' + magname.upper())
-            axs[idx, 0].set_ylabel('Frequency [mHz]')
-            axs[idx, 0].set_xlabel('UT')
-            if events is not None:
-                # print('Plotting events...')
-                trans      = mpl.transforms.blended_transform_factory(axs[idx,0].transData,axs[idx,0].transAxes)
-                for event in events:
-                    evt_dtime   = event.get('datetime')
-                    evt_label   = event.get('label')
-                    evt_color   = event.get('color','0.4')
+#             # ax2.axis([0, len(G13_Br)/2., 0, 40])
+#             #ax2.axis([0, len(y)/2., 0, 20])
+#             #plt.colorbar(cmap,label='spectrum [nT^2]')
+#             axs[idx, 0].set(xlim=xlim)
+#             axs[idx, 0].set(ylim=[0,20])
+#             axs[idx, 0].xaxis.set_major_formatter(myFmt)
+#             axs[idx, 0].set_title('STFT Power Spectrum: ' + magname.upper())
+#             axs[idx, 0].set_ylabel('Frequency [mHz]')
+#             axs[idx, 0].set_xlabel('UT')
+#             if events is not None:
+#                 # print('Plotting events...')
+#                 trans      = mpl.transforms.blended_transform_factory(axs[idx,0].transData,axs[idx,0].transAxes)
+#                 for event in events:
+#                     evt_dtime   = event.get('datetime')
+#                     evt_label   = event.get('label')
+#                     evt_color   = event.get('color','0.4')
 
-                    axs[idx, 0].axvline(evt_dtime,lw=1,ls='--',color=evt_color)
-                    if evt_label is not None:
-                        axs[idx, 0].text(evt_dtime,0.01,evt_label,transform=trans,
-                                rotation=90,fontdict=event_fontdict,color=evt_color,
-                                va='bottom',ha='right')
-        except Exception as e:
-            print(e)
-            continue
-    for idx, magname in enumerate(maglist_b):   # Plot Antarctic mags:
-        print('Plotting data for Antarctic magnetometer #' + str(idx+1) + ': ' + magname.upper())
-        try:                
-            # data = cdas.get_data(
-            #     'sp_phys',
-            #     'THG_L2_MAG_'+ magname.upper(),
-            #     start,
-            #     end,
-            #     ['thg_mag_'+ magname]
-            # )
-            # data['UT'] = pd.to_datetime(data['UT'])#, unit='s')
-            print('Pulling data...')
-            data = magfetch(start, end, magname, is_verbose = is_verbose)
-            x =data['UT']
-            y =data[d[parameter]]
-            y = reject_outliers(y)
-            # Interpolate NaNs away: 
-            df = pd.DataFrame(y, x)
-            df = df.interpolate('linear')
-            y = df[0].values
-            # fig, (ax1,ax2) = plt.subplots(2,1,figsize=(10,10))
-            xlim=[start,end]
-            # ax1.plot(G13_dt,G13_Br)
-            # ax1.plot(x, y-np.mean(y))
-            # ax1.set_ylabel('[nT]') # CHECK: is this the correct unit?
-            # ax1.set_xlabel('UT')
-            # ax1.set(xlim=xlim)
-            # myFmt = mdates.DateFormatter('%H:%M')
-            axs[idx, 1].xaxis.set_major_formatter(myFmt)
+#                     axs[idx, 0].axvline(evt_dtime,lw=1,ls='--',color=evt_color)
+#                     if evt_label is not None:
+#                         axs[idx, 0].text(evt_dtime,0.01,evt_label,transform=trans,
+#                                 rotation=90,fontdict=event_fontdict,color=evt_color,
+#                                 va='bottom',ha='right')
+#         except Exception as e:
+#             print(e)
+#             continue
+#     for idx, magname in enumerate(maglist_b):   # Plot Antarctic mags:
+#         print('Plotting data for Antarctic magnetometer #' + str(idx+1) + ': ' + magname.upper())
+#         try:                
+#             # data = cdas.get_data(
+#             #     'sp_phys',
+#             #     'THG_L2_MAG_'+ magname.upper(),
+#             #     start,
+#             #     end,
+#             #     ['thg_mag_'+ magname]
+#             # )
+#             # data['UT'] = pd.to_datetime(data['UT'])#, unit='s')
+#             print('Pulling data...')
+#             data = magfetch(start, end, magname, is_verbose = is_verbose)
+#             x =data['UT']
+#             y =data[d[parameter]]
+#             y = reject_outliers(y)
+#             # Interpolate NaNs away: 
+#             df = pd.DataFrame(y, x)
+#             df = df.interpolate('linear')
+#             y = df[0].values
+#             # fig, (ax1,ax2) = plt.subplots(2,1,figsize=(10,10))
+#             xlim=[start,end]
+#             # ax1.plot(G13_dt,G13_Br)
+#             # ax1.plot(x, y-np.mean(y))
+#             # ax1.set_ylabel('[nT]') # CHECK: is this the correct unit?
+#             # ax1.set_xlabel('UT')
+#             # ax1.set(xlim=xlim)
+#             # myFmt = mdates.DateFormatter('%H:%M')
+#             axs[idx, 1].xaxis.set_major_formatter(myFmt)
 
-            # f, t, Zxx = stft(G13_Br, fs=1/0.5, nperseg=1800,noverlap=1200)#
-            f, t, Zxx = stft(y-np.mean(y), fs=1, nperseg=1800,noverlap=1200)#
-            dt_list = [start+dt.timedelta(seconds=ii) for ii in t]
+#             # f, t, Zxx = stft(G13_Br, fs=1/0.5, nperseg=1800,noverlap=1200)#
+#             f, t, Zxx = stft(y-np.mean(y), fs=1, nperseg=1800,noverlap=1200)#
+#             dt_list = [start+dt.timedelta(seconds=ii) for ii in t]
 
-            cmap=axs[idx, 1].pcolormesh(dt_list, f*1000., np.abs(Zxx)*np.abs(Zxx), vmin=0, vmax=0.5)
+#             cmap=axs[idx, 1].pcolormesh(dt_list, f*1000., np.abs(Zxx)*np.abs(Zxx), vmin=0, vmax=0.5)
 
-            # ax2.axis([0, len(G13_Br)/2., 0, 40])
-            #ax2.axis([0, len(y)/2., 0, 20])
-            #plt.colorbar(cmap,label='spectrum [nT^2]')
-            axs[idx, 1].set(xlim=xlim)
-            axs[idx, 1].set(ylim=[0,20])
-            axs[idx, 1].xaxis.set_major_formatter(myFmt)
-            axs[idx, 1].set_title('STFT Power Spectrum: ' + magname.upper())
-            axs[idx, 1].set_ylabel('Frequency [mHz]')
-            axs[idx, 1].set_xlabel('UT')
-            if events is not None:
-                # print('Plotting events...')
-                trans      = mpl.transforms.blended_transform_factory(axs[idx,1].transData,axs[idx,1].transAxes)
-                for event in events:
-                    evt_dtime   = event.get('datetime')
-                    evt_label   = event.get('label')
-                    evt_color   = event.get('color','0.4')
+#             # ax2.axis([0, len(G13_Br)/2., 0, 40])
+#             #ax2.axis([0, len(y)/2., 0, 20])
+#             #plt.colorbar(cmap,label='spectrum [nT^2]')
+#             axs[idx, 1].set(xlim=xlim)
+#             axs[idx, 1].set(ylim=[0,20])
+#             axs[idx, 1].xaxis.set_major_formatter(myFmt)
+#             axs[idx, 1].set_title('STFT Power Spectrum: ' + magname.upper())
+#             axs[idx, 1].set_ylabel('Frequency [mHz]')
+#             axs[idx, 1].set_xlabel('UT')
+#             if events is not None:
+#                 # print('Plotting events...')
+#                 trans      = mpl.transforms.blended_transform_factory(axs[idx,1].transData,axs[idx,1].transAxes)
+#                 for event in events:
+#                     evt_dtime   = event.get('datetime')
+#                     evt_label   = event.get('label')
+#                     evt_color   = event.get('color','0.4')
 
-                    axs[idx, 1].axvline(evt_dtime,lw=1,ls='--',color=evt_color)
-                    if evt_label is not None:
-                        axs[idx, 1].text(evt_dtime,0.01,evt_label,transform=trans,
-                                rotation=90,fontdict=event_fontdict,color=evt_color,
-                                va='bottom',ha='right')
-        except Exception as e:
-            print(e)
-            continue
-    fig.suptitle(str(start) + ' ' +  str(parameter), fontsize=30)   # Title the plot...
-    if is_saved:
-        fname = 'output/PowerSpectrum_' +str(start) + '_' +  str(parameter) + '.png'
-        print("Saving figure. " + fname)
-        fig.savefig(fname, dpi='figure', pad_inches=0.3)
-    if is_displayed:
-        return fig # TODO: Figure out how to suppress output here
+#                     axs[idx, 1].axvline(evt_dtime,lw=1,ls='--',color=evt_color)
+#                     if evt_label is not None:
+#                         axs[idx, 1].text(evt_dtime,0.01,evt_label,transform=trans,
+#                                 rotation=90,fontdict=event_fontdict,color=evt_color,
+#                                 va='bottom',ha='right')
+#         except Exception as e:
+#             print(e)
+#             continue
+#     fig.suptitle(str(start) + ' ' +  str(parameter), fontsize=30)   # Title the plot...
+#     if is_saved:
+#         fname = 'output/PowerSpectrum_' +str(start) + '_' +  str(parameter) + '.png'
+#         print("Saving figure. " + fname)
+#         fig.savefig(fname, dpi='figure', pad_inches=0.3)
+#     if is_displayed:
+#         return fig # TODO: Figure out how to suppress output here
         
         
 ############################################################################################################################### 
