@@ -36,6 +36,9 @@ import os
 # For fill_nan:
 from scipy import interpolate
 
+# for Shane's code to pull from TGO:
+import requests
+
 ############################################################################################################################### 
 
 
@@ -64,18 +67,40 @@ def magfetch(
     file = open("tgopw.txt", "r")
     tgopw = file.read()
     if(is_verbose): print('Found Tromsø Geophysical Observatory password: ' + tgopw)
-    data = cdas.get_data(
-        'sp_phys',
-        'THG_L2_MAG_'+ magname.upper(),
-        start,
-        end,
-        ['thg_mag_'+ magname]
-    )
-    if(is_verbose): print('Data for ' + magname + ' collected.')
-    # if(is_verbose): print("Converting dates to datetimes.")
-    # data['UT'] = pd.to_datetime(data['UT'])# unit='s')
-    # data['UT'] = [datetime.datetime.fromisoformat(timestamp) for timestamp in data['UT']]
-    # df = pd.DataFrame(data)
+    if(magname in ['upn', 'umq', 'gdh', 'atu', 'skt', 'ghb']): 
+        if(is_verbose): print('Collecting data for ' + magname + ' from TGO.')
+        # data = cdas.get_data(
+        #     'sp_phys',
+        #     'THG_L2_MAG_'+ magname.upper(),
+        #     start,
+        #     end,
+        #     ['thg_mag_'+ magname]
+        # )
+        foo = _download_remote_file(start, site=magname, verbose=is_verbose)
+        df = pd.read_csv('output/foo.txt', skiprows = 5, delim_whitespace=True)
+        # Convert the 'DD/MM/YYYY HH:MM:SS' column to datetime format
+        df['DD/MM/YYYY HH:MM:SS'] = df['DD/MM/YYYY'] + ' ' + df['HH:MM:SS']
+        df['UT'] = pd.to_datetime(df['DD/MM/YYYY HH:MM:SS'], format='%d/%m/%Y %H:%M:%S')
+
+        # Rename the columns
+        df.rename(columns={'X': 'MAGNETIC_NORTH_-_H', 'Y': 'MAGNETIC_EAST_-_E', 'Z': 'VERTICAL_DOWN_-_Z'}, inplace=True)
+
+        # Convert the dataframe to a dictionary matching ai.cdas output
+        data = {
+            'UT': df['UT'].to_numpy(),
+            'MAGNETIC_NORTH_-_H': df['MAGNETIC_NORTH_-_H'].to_numpy(),
+            'MAGNETIC_EAST_-_E': df['MAGNETIC_EAST_-_E'].to_numpy(),
+            'VERTICAL_DOWN_-_Z': df['VERTICAL_DOWN_-_Z'].to_numpy()
+        }
+    else:
+        data = cdas.get_data(
+            'sp_phys',
+            'THG_L2_MAG_'+ magname.upper(),
+            start,
+            end,
+            ['thg_mag_'+ magname]
+        )
+    if(is_verbose): print('Data for ' + magname + ' collected: ' + str(len(data['UT'])) + ' samples.')
     return data
 
 ############################################################################################################################### 
@@ -379,15 +404,15 @@ def magspect(
     for idx, magname in enumerate(maglist_a):   # Plot Arctic mags:
         print('Plotting data for Arctic magnetometer #' + str(idx+1) + ': ' + magname.upper())
         try:                
-            data = cdas.get_data(
-                'sp_phys',
-                'THG_L2_MAG_'+ magname.upper(),
-                start,
-                end,
-                ['thg_mag_'+ magname]
-            )
-            data['UT'] = pd.to_datetime(data['UT'])#, unit='s')
-            # data = magfetch(start, end, magname)
+            # data = cdas.get_data(
+            #     'sp_phys',
+            #     'THG_L2_MAG_'+ magname.upper(),
+            #     start,
+            #     end,
+            #     ['thg_mag_'+ magname]
+            # )
+            # data['UT'] = pd.to_datetime(data['UT'])#, unit='s')
+            data = magfetch(start, end, magname, is_verbose = is_verbose)
             x =data['UT']
             y =data[d[parameter]]
             y = reject_outliers(y)
@@ -773,3 +798,47 @@ def wavefig(
     if is_displayed:
         # fig.show()
         return fig # TODO: Figure out how to suppress output here
+############################################################################################################################### 
+
+def _download_remote_file(datetime: dt.datetime, site='tro', verbose=False):
+    """Downloads file for a given date/site/orientation to the configured storage path
+
+    Args:
+        datetime (dt.datetime): date/time to download
+        site (str, optional): Which site code
+        orientation (str, optional): sensor orientation ('XYZ', 'HEZ')
+    """
+    def _build_request(datetime, site='tro'):
+        request_dict = {#'site':config.site_codes[site],
+                        'year':datetime.strftime('%Y'),
+                        'month':'{}'.format(datetime.month),
+                        'day':'{}'.format(datetime.day),
+                        'res':'10sec',
+                        'pwd': 'ResUseNoCom',
+                        'format':'XYZhtml',
+                        'comps':'SXYZ',
+                        'getdata':' Get Data '}
+        return request_dict
+    
+    # initiate request on remote server
+    input_url = 'http://flux.phys.uit.no/cgi-bin/mkascii.cgi?'
+
+    request_dict = _build_request(datetime, site=site)
+    init_resp = requests.get(input_url, params=request_dict, timeout=(30,300))
+    
+    # check if header and footer are as expected
+    if init_resp.text.startswith('<pre>\n') and init_resp.text.endswith('</pre>\n'):
+        savedata = init_resp.text.lstrip('<pre>\n').rstrip('</pre>\n') + '\n'
+        # find a place to put the data
+        savefilepath = 'output/' + datetime.strftime(datetime) + '_' + site + '_' + sample_rate +'.txt'
+        if(verbose): print(savefilepath)
+        try:
+            with open(savefilepath, 'w') as savefile:
+                savefile.write(savedata)
+        except FileNotFoundError:
+            # os.makedirs(datetime.strftime(config.fpath_format.format(base=config.datapath_local)))
+            with open(savefilepath, 'w') as savefile:
+                savefile.write(savedata)
+        return savedata
+    else:
+        return 
