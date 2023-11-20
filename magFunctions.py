@@ -43,7 +43,6 @@ import requests
 
 
 def magfetch(
-    # parameter = 'Bx',
     start = datetime.datetime(2016, 1, 24, 0, 0, 0), 
     end = datetime.datetime(2016, 1, 25, 0, 0, 0), 
     magname = 'atu', 
@@ -69,29 +68,8 @@ def magfetch(
     if(is_verbose): print('Found Tromsø Geophysical Observatory password: ' + tgopw)
     if(magname in ['upn', 'umq', 'gdh', 'atu', 'skt', 'ghb']): 
         if(is_verbose): print('Collecting data for ' + magname + ' from TGO.')
-        # data = cdas.get_data(
-        #     'sp_phys',
-        #     'THG_L2_MAG_'+ magname.upper(),
-        #     start,
-        #     end,
-        #     ['thg_mag_'+ magname]
-        # )
-        foo = _download_remote_file(start, site=magname, verbose=is_verbose)
-        df = pd.read_csv('output/foo.txt', skiprows = 5, delim_whitespace=True)
-        # Convert the 'DD/MM/YYYY HH:MM:SS' column to datetime format
-        df['DD/MM/YYYY HH:MM:SS'] = df['DD/MM/YYYY'] + ' ' + df['HH:MM:SS']
-        df['UT'] = pd.to_datetime(df['DD/MM/YYYY HH:MM:SS'], format='%d/%m/%Y %H:%M:%S')
-
-        # Rename the columns
-        df.rename(columns={'X': 'MAGNETIC_NORTH_-_H', 'Y': 'MAGNETIC_EAST_-_E', 'Z': 'VERTICAL_DOWN_-_Z'}, inplace=True)
-
-        # Convert the dataframe to a dictionary matching ai.cdas output
-        data = {
-            'UT': df['UT'].to_numpy(),
-            'MAGNETIC_NORTH_-_H': df['MAGNETIC_NORTH_-_H'].to_numpy(),
-            'MAGNETIC_EAST_-_E': df['MAGNETIC_EAST_-_E'].to_numpy(),
-            'VERTICAL_DOWN_-_Z': df['VERTICAL_DOWN_-_Z'].to_numpy()
-        }
+        if(end<start): print('End is after start... check inputs.')
+        data = magfetchtgo(start, end, magname, tgopw = tgopw)
     else:
         data = cdas.get_data(
             'sp_phys',
@@ -102,6 +80,155 @@ def magfetch(
         )
     if(is_verbose): print('Data for ' + magname + ' collected: ' + str(len(data['UT'])) + ' samples.')
     return data
+
+############################################################################################################################### 
+
+def magfetchtgo(start, end, magname, tgopw = 'ResUseNoCom'):
+    """
+    Pulls data from a RESTful API with a link based on the date.
+
+    Args:
+        start (datetime.datetime): The start date of the data to be fetched.
+        end (datetime.datetime): The end date of the data to be fetched.
+        magname (str): The name of the magnetometer station.
+        tgopw (str): Password for Tromso Geophysical Observatory.
+
+    Returns:
+        pandas.DataFrame: A pandas DataFrame containing the fetched data.
+    """
+
+    df = pd.DataFrame()
+
+    # Loop over each day from start to end
+    for day in range(start.day, end.day + 1):
+        # Generate the URL for the current day
+        url = f'https://flux.phys.uit.no/cgi-bin/mkascii.cgi?site={magname}4d&year={start.year}&month={start.month}&day={day}&res=10sec&pwd='+ tgopw + '&format=XYZhtml&comps=DHZ&getdata=+Get+Data'
+
+        # Fetch the data for the current day
+        foo = pd.read_csv(url, skiprows = 6, delim_whitespace=True, usecols=range(5), index_col=False)
+        # Convert the 'DD/MM/YYYY HH:MM:SS' column to datetime format
+        foo['DD/MM/YYYY HH:MM:SS'] = foo['DD/MM/YYYY'] + ' ' + foo['HH:MM:SS']
+        foo['UT'] = pd.to_datetime(foo['DD/MM/YYYY HH:MM:SS'], format='%d/%m/%Y %H:%M:%S')
+
+        # Rename the columns
+        foo.rename(columns={'X': 'MAGNETIC_NORTH_-_H', 'Y': 'MAGNETIC_EAST_-_E', 'Z': 'VERTICAL_DOWN_-_Z'}, inplace=True)
+        
+        df = pd.concat([df, foo])
+
+    # # Convert the dataframe to a dictionary
+    data = {
+        'UT': df['UT'].to_numpy(),
+        'MAGNETIC_NORTH_-_H': df['MAGNETIC_NORTH_-_H'].to_numpy(),
+        'MAGNETIC_EAST_-_E': df['MAGNETIC_EAST_-_E'].to_numpy(),
+        'VERTICAL_DOWN_-_Z': df['VERTICAL_DOWN_-_Z'].to_numpy()
+    }
+    # print(type(df))
+    # return df
+    return data
+############################################################################################################################### 
+def _download_remote_file(datetime: dt.datetime, site='tro', verbose=False):
+    """Downloads file for a given date/site/orientation to the configured storage path
+
+    Args:
+        datetime (dt.datetime): date/time to download
+        site (str, optional): Which site code
+        orientation (str, optional): sensor orientation ('XYZ', 'HEZ')
+    """
+    def _build_request(datetime, site='tro'):
+        request_dict = {#'site':config.site_codes[site],
+                        'year':datetime.strftime('%Y'),
+                        'month':'{}'.format(datetime.month),
+                        'day':'{}'.format(datetime.day),
+                        'res':'10sec',
+                        'pwd': 'ResUseNoCom',
+                        'format':'XYZhtml',
+                        'comps':'SXYZ',
+                        'getdata':' Get Data '}
+        return request_dict
+    
+    # initiate request on remote server
+    input_url = 'http://flux.phys.uit.no/cgi-bin/mkascii.cgi?'
+
+    request_dict = _build_request(datetime, site=site)
+    init_resp = requests.get(input_url, params=request_dict, timeout=(30,300))
+    
+    # check if header and footer are as expected
+    if init_resp.text.startswith('<pre>\n') and init_resp.text.endswith('</pre>\n'):
+        savedata = init_resp.text.lstrip('<pre>\n').rstrip('</pre>\n') + '\n'
+        # find a place to put the data
+        savefilepath = 'output/' + datetime.strftime(datetime) + '_' + site + '_' + sample_rate +'.txt'
+        if(verbose): print(savefilepath)
+        try:
+            with open(savefilepath, 'w') as savefile:
+                savefile.write(savedata)
+        except FileNotFoundError:
+            # os.makedirs(datetime.strftime(config.fpath_format.format(base=config.datapath_local)))
+            with open(savefilepath, 'w') as savefile:
+                savefile.write(savedata)
+        return savedata
+    else:
+        return 
+############################################################################################################################### 
+# def magfetch(
+#     # parameter = 'Bx',
+#     start = datetime.datetime(2016, 1, 24, 0, 0, 0), 
+#     end = datetime.datetime(2016, 1, 25, 0, 0, 0), 
+#     magname = 'atu', 
+#     is_verbose = False, 
+#     tgopw = 'ResUseNoCom'
+# ):
+#     """
+#     MAGFETCH 
+#         Function to fetch data for a given magnetometer. Pulls from ai.cdas or DTU.
+
+#         Arguments:
+#             start, end   : datetimes of the start and end of sampled data range.
+#             magname      : IAGA ID for magnetometer being sampled. e.g.: 'upn'
+#             is_verbose   : Boolean for whether debugging text is printed.
+#             tgopw        : Password for Tromsø Geophysical Observatory
+
+#         Returns:
+#             df           : pandas dataframe with columns ['UT', 'MAGNETIC_NORTH_-_H', 'MAGNETIC_EAST_-_E', 'VERTICAL_DOWN_-_Z']
+#     """
+#     # Pull password for TGO from local .txt file:
+#     file = open("tgopw.txt", "r")
+#     tgopw = file.read()
+#     if(is_verbose): print('Found Tromsø Geophysical Observatory password: ' + tgopw)
+#     if(magname in ['upn', 'umq', 'gdh', 'atu', 'skt', 'ghb']): 
+#         if(is_verbose): print('Collecting data for ' + magname + ' from TGO.')
+#         # data = cdas.get_data(
+#         #     'sp_phys',
+#         #     'THG_L2_MAG_'+ magname.upper(),
+#         #     start,
+#         #     end,
+#         #     ['thg_mag_'+ magname]
+#         # )
+#         foo = _download_remote_file(start, site=magname, verbose=is_verbose)
+#         df = pd.read_csv('output/foo.txt', skiprows = 5, delim_whitespace=True)
+#         # Convert the 'DD/MM/YYYY HH:MM:SS' column to datetime format
+#         df['DD/MM/YYYY HH:MM:SS'] = df['DD/MM/YYYY'] + ' ' + df['HH:MM:SS']
+#         df['UT'] = pd.to_datetime(df['DD/MM/YYYY HH:MM:SS'], format='%d/%m/%Y %H:%M:%S')
+
+#         # Rename the columns
+#         df.rename(columns={'X': 'MAGNETIC_NORTH_-_H', 'Y': 'MAGNETIC_EAST_-_E', 'Z': 'VERTICAL_DOWN_-_Z'}, inplace=True)
+
+#         # Convert the dataframe to a dictionary matching ai.cdas output
+#         data = {
+#             'UT': df['UT'].to_numpy(),
+#             'MAGNETIC_NORTH_-_H': df['MAGNETIC_NORTH_-_H'].to_numpy(),
+#             'MAGNETIC_EAST_-_E': df['MAGNETIC_EAST_-_E'].to_numpy(),
+#             'VERTICAL_DOWN_-_Z': df['VERTICAL_DOWN_-_Z'].to_numpy()
+#         }
+#     else:
+#         data = cdas.get_data(
+#             'sp_phys',
+#             'THG_L2_MAG_'+ magname.upper(),
+#             start,
+#             end,
+#             ['thg_mag_'+ magname]
+#         )
+#     if(is_verbose): print('Data for ' + magname + ' collected: ' + str(len(data['UT'])) + ' samples.')
+#     return data
 
 ############################################################################################################################### 
 
