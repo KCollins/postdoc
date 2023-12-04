@@ -93,7 +93,7 @@ def magfetchtgo(start, end, magname, tgopw = 'ResUseNoCom', resolution = '1sec')
         start (datetime.datetime): The start date of the data to be fetched.
         end (datetime.datetime): The end date of the data to be fetched.
         magname (str): The name of the magnetometer station.
-        tgopw (str): Password for Tromso Geophysical Observatory.
+        tgopw (str): Password for Tromsø Geophysical Observatory.
         resolution (str): String for data resolution; e.g., '10sec'; default '1sec'
 
     Returns:
@@ -900,45 +900,45 @@ def wavefig(
         return fig # TODO: Figure out how to suppress output here
 ############################################################################################################################### 
 
-def _download_remote_file(datetime: dt.datetime, site='tro', verbose=False):
-    """Downloads file for a given date/site/orientation to the configured storage path
+# def _download_remote_file(datetime: dt.datetime, site='tro', verbose=False):
+#     """Downloads file for a given date/site/orientation to the configured storage path
 
-    Args:
-        datetime (dt.datetime): date/time to download
-        site (str, optional): Which site code
-        orientation (str, optional): sensor orientation ('XYZ', 'HEZ')
-    """
-    def _build_request(datetime, site='tro'):
-        request_dict = {#'site':config.site_codes[site],
-                        'year':datetime.strftime('%Y'),
-                        'month':'{}'.format(datetime.month),
-                        'day':'{}'.format(datetime.day),
-                        'res':'10sec',
-                        'pwd': 'ResUseNoCom',
-                        'format':'XYZhtml',
-                        'comps':'SXYZ',
-                        'getdata':' Get Data '}
-        return request_dict
+#     Args:
+#         datetime (dt.datetime): date/time to download
+#         site (str, optional): Which site code
+#         orientation (str, optional): sensor orientation ('XYZ', 'HEZ')
+#     """
+#     def _build_request(datetime, site='tro'):
+#         request_dict = {#'site':config.site_codes[site],
+#                         'year':datetime.strftime('%Y'),
+#                         'month':'{}'.format(datetime.month),
+#                         'day':'{}'.format(datetime.day),
+#                         'res':'10sec',
+#                         'pwd': 'ResUseNoCom',
+#                         'format':'XYZhtml',
+#                         'comps':'SXYZ',
+#                         'getdata':' Get Data '}
+#         return request_dict
     
-    # initiate request on remote server
-    input_url = 'http://flux.phys.uit.no/cgi-bin/mkascii.cgi?'
+#     # initiate request on remote server
+#     input_url = 'http://flux.phys.uit.no/cgi-bin/mkascii.cgi?'
 
-    request_dict = _build_request(datetime, site=site)
-    init_resp = requests.get(input_url, params=request_dict, timeout=(30,300))
+#     request_dict = _build_request(datetime, site=site)
+#     init_resp = requests.get(input_url, params=request_dict, timeout=(30,300))
     
-    # check if header and footer are as expected
-    if init_resp.text.startswith('<pre>\n') and init_resp.text.endswith('</pre>\n'):
-        savedata = init_resp.text.lstrip('<pre>\n').rstrip('</pre>\n') + '\n'
-        # find a place to put the data
-        savefilepath = 'output/' + datetime.strftime(datetime) + '_' + site + '_' + sample_rate +'.txt'
-        if(verbose): print(savefilepath)
-        try:
-            with open(savefilepath, 'w') as savefile:
-                savefile.write(savedata)
-        except FileNotFoundError:
-            # os.makedirs(datetime.strftime(config.fpath_format.format(base=config.datapath_local)))
-            with open(savefilepath, 'w') as savefile:
-                savefile.write(savedata)
-        return savedata
-    else:
-        return 
+#     # check if header and footer are as expected
+#     if init_resp.text.startswith('<pre>\n') and init_resp.text.endswith('</pre>\n'):
+#         savedata = init_resp.text.lstrip('<pre>\n').rstrip('</pre>\n') + '\n'
+#         # find a place to put the data
+#         savefilepath = 'output/' + datetime.strftime(datetime) + '_' + site + '_' + sample_rate +'.txt'
+#         if(verbose): print(savefilepath)
+#         try:
+#             with open(savefilepath, 'w') as savefile:
+#                 savefile.write(savedata)
+#         except FileNotFoundError:
+#             # os.makedirs(datetime.strftime(config.fpath_format.format(base=config.datapath_local)))
+#             with open(savefilepath, 'w') as savefile:
+#                 savefile.write(savedata)
+#         return savedata
+#     else:
+#         return 
