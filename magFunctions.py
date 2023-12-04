@@ -32,6 +32,8 @@ from plotly.subplots import make_subplots
 
 # For saving images:
 import os
+import os.path
+from os import path
 
 # For fill_nan:
 from scipy import interpolate
@@ -725,7 +727,9 @@ def fill_nan(y):
     y_fit = y[~np.isnan(y)].reshape(-1, 1)
 
     # Estimate the coefficients of the linear regression
-    beta = np.linalg.lstsq(X_fit.T, y_fit)[0]
+    # beta = np.linalg.lstsq(X_fit.T, y_fit)[0]
+    beta = np.linalg.lstsq(X_fit.T, y_fit, rcond=-1)[0]
+
 
     # Fill in all the nan values using the predicted coefficients
     y.flat[np.isnan(y)] = np.dot(X[:, np.isnan(y)].T, beta)
@@ -925,9 +929,9 @@ def wavefig(
                 standard_deviation = np.std(numeric_data)
                 if(is_verbose): print('Finding coefficient of variation...')
                 coefficient_of_variation = standard_deviation / mean * 100
-                if(is_verbose): print('Finding latitude of maximum power...')
-                maxlat = foo[foo['WAVEPWR'] ==data_list.max()]['AACGMLAT'][0]
-
+                maxlat = foo[foo['WAVEPWR'] ==max(numeric_data)]['AACGMLAT'][0]
+                
+                    
                 data[label] = {
                     'Maximum': maximum,
                     'Mean': mean,
@@ -958,7 +962,9 @@ def wavefig(
             df_saved
 
             # Append the DataFrame to an existing CSV file
-            df_saved.to_csv('output/wavepwrdata.csv', mode='a', index=False)
+            fname = "output/wavepwrdata.csv"
+            is_new = not(path.exists(fname)) # boolean for whether to include header or not..
+            df_saved.to_csv(fname, mode='a', index=False, header=is_new)
             if(is_verbose): print('Data saved!')
         except Exception as e:
             print('Ran into trouble!')
