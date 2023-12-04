@@ -823,8 +823,11 @@ def wavefig(
     end = datetime.datetime(2016, 1, 25, 0, 0, 0), 
     maglist_a = ['upn', 'umq', 'gdh', 'atu', 'skt', 'ghb'],
     maglist_b = ['pg0', 'pg1', 'pg2', 'pg3', 'pg4', 'pg5'],
+    f_lower = 2.5,        # frequency threshold in mHz 
+    f_upper = 3,     # frequency threshold in mHz
     is_displayed = True,
     is_saved = False, 
+    is_data_saved = False,
     is_verbose = False
 ):
     """
@@ -837,8 +840,10 @@ def wavefig(
             start, end   : datetimes of the start and end of plots
             maglist_a     : List of Arctic magnetometers. Default: ['upn', 'umq', 'gdh', 'atu', 'skt', 'ghb']
             maglist_b     : Corresponding list of Antarctic magnetometers. Default: ['pg0', 'pg1', 'pg2', 'pg3', 'pg4', 'pg5']
+            f_lower, f_upper : Range of frequencies of interest in mHz.
             is_displayed   : Boolean for whether resulting figure is displayed inline. False by default.
             is_saved       : Boolean for whether resulting figure is saved to /output directory.
+            is_data_saved  : Boolean for whether dataframe of wave power calculation resusts is saved to /output directory.
             is_verbose     : Boolean for whether debugging text is printed.
 
         Returns:
@@ -846,7 +851,7 @@ def wavefig(
     """
     
     foo = stations.copy()
-    foo['WAVEPWR'] = foo.apply(lambda row : wavepwr(row['IAGA'], parameter = parameter, start = start, end = end, is_verbose = is_verbose), axis = 1)#wavepwr(foo['IAGA'])
+    foo['WAVEPWR'] = foo.apply(lambda row : wavepwr(row['IAGA'], parameter = parameter, start = start, end = end, f_lower = f_lower, f_upper = f_upper, is_verbose = is_verbose), axis = 1)#wavepwr(foo['IAGA'])
     foo['HEMISPHERE'] = np.sign(foo.AACGMLAT)
     foo.HEMISPHERE = foo['HEMISPHERE'].map({1:'Arctic', -1:'Antarctic', 0:'Error'})
     foo['ABSLAT'] = abs(foo.AACGMLAT)
@@ -890,11 +895,78 @@ def wavefig(
     fig.update_yaxes(title_text="<b>arctic</b> wave power", secondary_y=True)
     
     if(is_saved): 
-        if(is_verbose): print("Saving figure.")
         fname = 'output/WavePower_' +str(start) + '_to_' + str(end) + '_' +  str(parameter) + '.png'
-        print("Saving figure. " + fname)
+        if(is_verbose): print("Saving figure. " + fname)
         # fig.savefig(fname, dpi='figure', pad_inches=0.3)
         fig.write_image(fname)
+    if(is_data_saved): 
+        try:
+            if(is_verbose): print("Saving data.")
+            foo = foo.set_index("IAGA")
+            if(is_verbose): print('Composing power table...')
+            df_pwr = foo[[ "WAVEPWR"]].transpose().reset_index(drop = True)
+
+            # Calculate basic statistics:
+            if(is_verbose): print('Separating data by hemisphere....')
+            arctic_pwr = foo.query("HEMISPHERE == 'Arctic'")['WAVEPWR']
+            antarctic_pwr = foo.query("HEMISPHERE == 'Antarctic'")['WAVEPWR']
+            
+            # Process each list of values and store the results in a dictionary
+            data = {}
+            if(is_verbose): print('Calculating statistics....')
+            for data_list, label in zip([arctic_pwr, antarctic_pwr], ['Arctic', 'Antarctic']):
+                if(is_verbose): print('Converting data to numeric type...')
+                numeric_data = [float(x) for x in data_list.to_list() if x != 'Error']
+                if(is_verbose): print('Finding maximum...')
+                maximum = np.max(numeric_data)
+                if(is_verbose): print('Finding mean...')
+                mean = np.mean(numeric_data)
+                if(is_verbose): print('Finding standard deviation...')
+                standard_deviation = np.std(numeric_data)
+                if(is_verbose): print('Finding coefficient of variation...')
+                coefficient_of_variation = standard_deviation / mean * 100
+                if(is_verbose): print('Finding latitude of maximum power...')
+                maxlat = foo[foo['WAVEPWR'] ==data_list.max()]['AACGMLAT'][0]
+
+                data[label] = {
+                    'Maximum': maximum,
+                    'Mean': mean,
+                    'Standard Deviation': standard_deviation,
+                    'Coefficient of Variation': coefficient_of_variation,
+                    'Maximum AACGMLAT': maxlat
+                }
+
+            # Create a DataFrame from the dictionary
+            df_stat = pd.DataFrame(data).T
+            df_stat = df_stat.stack().to_frame().T
+            df_stat.columns = [' '.join(col).strip() for col in df_stat.columns]
+
+            # create dataframe with our data pedigree: start and end times, lower and upper bounds
+            if(is_verbose): print('Labeling data.')
+            d = {
+                'Parameter' : parameter, 
+                'Start': start,
+                'End': end,
+                'Freq Lower Bound (mHz)': f_lower,
+                'Freq Upper Bound (mHz)': f_upper
+            }
+            df_pedigree = pd.DataFrame(d, index=range(1))
+
+             # consolidate into dataframe:
+            # Print the DataFrame
+            df_saved = pd.concat([df_pedigree, df_pwr, df_stat], axis=1)
+            df_saved
+
+            # Append the DataFrame to an existing CSV file
+            df_saved.to_csv('output/wavepwrdata.csv', mode='a', index=False)
+            if(is_verbose): print('Data saved!')
+        except Exception as e:
+            print('Ran into trouble!')
+            print(e)
+        
+        
+        # fig.savefig(fname, dpi='figure', pad_inches=0.3)
+        # foo.to_csv(fname, index=True)
     if is_displayed:
         # fig.show()
         return fig # TODO: Figure out how to suppress output here
